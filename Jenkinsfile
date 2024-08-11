@@ -1,18 +1,16 @@
 pipeline {
-    agent any 
-    environment { 
-        DOCKER_ID = "surabhiharsha5" 
+    environment {
+        DOCKER_ID = "fallewi"
         DOCKER_IMAGE = "datascientestapi"
         DOCKER_TAG = "v.${BUILD_ID}.0"
     }
+    agent any
     stages {
-        stage('Docker Build') { 
+        stage('Docker Build') {
             steps {
                 script {
                     sh '''
-                    if [ "$(docker ps -aq -f name=jenkins)" ]; then
-                        docker rm -f jenkins
-                    fi
+                    docker rm -f jenkins || true
                     docker build -t $DOCKER_ID/$DOCKER_IMAGE:$DOCKER_TAG .
                     sleep 6
                     '''
@@ -32,7 +30,9 @@ pipeline {
         stage('Test Acceptance') {
             steps {
                 script {
-                    sh '''curl localhost'''
+                    sh '''
+                    curl localhost
+                    '''
                 }
             }
         }
@@ -43,7 +43,7 @@ pipeline {
             steps {
                 script {
                     sh '''
-                    echo $DOCKER_PASS | docker login -u $DOCKER_ID --password-stdin
+                    docker login -u $DOCKER_ID -p "$DOCKER_PASS"
                     docker push $DOCKER_ID/$DOCKER_IMAGE:$DOCKER_TAG
                     '''
                 }
@@ -58,60 +58,50 @@ pipeline {
                     sh '''
                     rm -Rf .kube
                     mkdir .kube
-                    cat $KUBECONFIG > .kube/config
+                    cat "$KUBECONFIG" > .kube/config
                     cp fastapi/values.yaml values.yml
                     sed -i "s+tag.*+tag: ${DOCKER_TAG}+g" values.yml
-                    helm upgrade --install app fastapi --values=values.yml --namespace dev || exit 1
+                    helm upgrade --install app fastapi --values=values.yml --namespace dev
                     '''
                 }
             }
         }
-        stage('Déploiement en staging') {
-        environment
-        {
-        KUBECONFIG = credentials("config") // we retrieve kubeconfig from secret file called config saved on jenkins
-        }
+        stage('Deploiement en staging') {
+            environment {
+                KUBECONFIG = credentials("config")
+            }
             steps {
                 script {
-                sh '''
-                rm -Rf .kube
-                mkdir .kube
-                ls
-                cat $KUBECONFIG > .kube/config
-                cp fastapi/values.yaml values.yml
-                cat values.yml
-                sed -i "s+tag.*+tag: ${DOCKER_TAG}+g" values.yml
-                helm upgrade --install app fastapi --values=values.yml --namespace staging
-                '''
+                    sh '''
+                    rm -Rf .kube
+                    mkdir .kube
+                    cat "$KUBECONFIG" > .kube/config
+                    cp fastapi/values.yaml values.yml
+                    sed -i "s+tag.*+tag: ${DOCKER_TAG}+g" values.yml
+                    helm upgrade --install app fastapi --values=values.yml --namespace staging
+                    '''
                 }
             }
         }
-        stage('Déploiement en prod') {
-        environment
-        {
-        KUBECONFIG = credentials("config") // we retrieve kubeconfig from secret file called config saved on jenkins
-        }
+        stage('Deploiement en prod') {
+            environment {
+                KUBECONFIG = credentials("config")
+            }
             steps {
-            // Create an Approval Button with a timeout of 15minutes.
-            // this require a manuel validation in order to deploy on production environment
-                    timeout(time: 15, unit: "MINUTES") {
-                        input message: 'Do you want to deploy in production ?', ok: 'Yes'
-                    }
-
+                timeout(time: 15, unit: "MINUTES") {
+                    input message: 'Do you want to deploy in production?', ok: 'Yes'
+                }
                 script {
-                sh '''
-                rm -Rf .kube
-                mkdir .kube
-                ls
-                cat $KUBECONFIG > .kube/config
-                cp fastapi/values.yaml values.yml
-                cat values.yml
-                sed -i "s+tag.*+tag: ${DOCKER_TAG}+g" values.yml
-                helm upgrade --install app fastapi --values=values.yml --namespace prod
-                '''
+                    sh '''
+                    rm -Rf .kube
+                    mkdir .kube
+                    cat "$KUBECONFIG" > .kube/config
+                    cp fastapi/values.yaml values.yml
+                    sed -i "s+tag.*+tag: ${DOCKER_TAG}+g" values.yml
+                    helm upgrade --install app fastapi --values=values.yml --namespace prod
+                    '''
                 }
             }
-
         }
     }
 }
